@@ -1,0 +1,23 @@
+{
+  "CpuDouble": 2,
+  "Debug": true,
+  "Host": "192.168.100.110",
+  "Port": "21",
+  "User": "test",
+  "Passwd": "test",
+  "Transfers":[
+    {
+      "FtpDir": "send/",
+      "LocalDir": "/Users/fanzhi/Documents/temp/send/",
+      "IsPut": true
+    },
+    {
+      "FtpDir": "receive/",
+      "LocalDir": "/Users/fanzhi/Documents/temp/receive/",
+      "IsPut": false
+    }
+  ],
+  "DeleteSource": true,
+  "Sleep": 100,
+  "Filefilters": [".dat",".abc"]
+}
