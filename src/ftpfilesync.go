@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"github.com/jlaffaye/ftp"
+	"github.com/lestrrat-go/file-rotatelogs"
+	"github.com/rifflock/lfshook"
 	log "github.com/sirupsen/logrus"
 	"io/ioutil"
 	"os"
@@ -12,23 +14,27 @@ import (
 )
 
 var config Config
+var logger *log.Logger
 
 func init() {
-	log.SetFormatter(&log.JSONFormatter{})
-	log.SetOutput(os.Stdout)
-	log.SetLevel(log.InfoLevel)
+	//log.SetFormatter(&log.JSONFormatter{})
+	//log.SetOutput(os.Stdout)
+	//log.SetLevel(log.InfoLevel)
+	NewLogger()
+	logger.SetFormatter(&log.JSONFormatter{})
+	logger.SetLevel(log.InfoLevel)
 }
 
 func main() {
 
-	flaConfigPath := "config.json"
+	flaConfigPath := "etc/config.json"
 	if !checkFileIsExist(flaConfigPath) {
-		log.Error("当前目录缺少文件: ", flaConfigPath)
+		logger.Error("当前目录缺少文件: ", flaConfigPath)
 		return
 	}
 	readConfig(flaConfigPath)
 	if config.Debug {
-		log.SetLevel(log.DebugLevel)
+		logger.SetLevel(log.DebugLevel)
 	}
 	for {
 		run()
@@ -39,7 +45,7 @@ func run() {
 	//拔号
 	conn, err := ftp.DialWithOptions(config.Host+":"+config.Port, ftp.DialWithTimeout(5*time.Second))
 	if err != nil {
-		log.Fatal(err)
+		logger.Error(err)
 		return
 	}
 	// 退出登录
@@ -47,9 +53,9 @@ func run() {
 		if conn != nil {
 			//连接未断开时退出
 			e := conn.Quit()
-			log.Fatal("出现错误，ftp连接断开 ")
+			logger.Error("出现错误，ftp连接断开 ")
 			if e != nil {
-				log.Error(e)
+				logger.Error(e)
 				return
 			}
 		}
@@ -59,7 +65,7 @@ func run() {
 	//登录
 	err = conn.Login(config.User, config.Passwd)
 	if err != nil {
-		log.Fatal(err)
+		logger.Error(err)
 		return
 	}
 
@@ -72,7 +78,7 @@ func run() {
 			//上传时在ftp服务器创建文件夹
 			e := conn.MakeDir(remoteDir)
 			if e != nil {
-				log.Error(e)
+				logger.Error(e)
 			}
 		} else {
 			//下载时在本地创建文件夹
@@ -81,7 +87,7 @@ func run() {
 				//先检查文件夹是否存在
 				e := os.Mkdir(localDir, 0666)
 				if e != nil {
-					log.Error(e)
+					logger.Error(e)
 				}
 			}
 		}
@@ -101,7 +107,7 @@ func doTask(conn *ftp.ServerConn) {
 			//检查服务器是否连接
 			e := conn.NoOp()
 			if e != nil {
-				log.Fatal(e)
+				logger.Error(e)
 				return
 			}
 			if IsPut {
@@ -119,7 +125,7 @@ func doTask(conn *ftp.ServerConn) {
 func syncUpload(localDir string, remoteDir string, conn *ftp.ServerConn) {
 	//上传文件
 	localDirs, _ := ioutil.ReadDir(localDir)
-	log.Info("开始上传文件,", localDir, ",文件数量为：", len(localDirs))
+	logger.Info("开始上传文件,", localDir, ",文件数量为：", len(localDirs))
 	//开始执行时间
 	start := time.Now().UnixNano() / 1e6
 	j := 0
@@ -135,19 +141,19 @@ func syncUpload(localDir string, remoteDir string, conn *ftp.ServerConn) {
 			localFileName := localDir + fileName
 			byteFile, e1 := ioutil.ReadFile(localFileName)
 			if e1 != nil {
-				log.Error(e1)
+				logger.Error(e1)
 				continue
 			}
 			e2 := conn.Stor(ftpFileName, bytes.NewBuffer(byteFile))
 			if e2 != nil {
-				log.Error(e2)
+				logger.Error(e2)
 				continue
 			}
 			if config.DeleteSource {
 				//删除原文件
 				e := os.Remove(localFileName)
 				if e != nil {
-					log.Error(e)
+					logger.Error(e)
 					continue
 				}
 
@@ -156,7 +162,7 @@ func syncUpload(localDir string, remoteDir string, conn *ftp.ServerConn) {
 			j = j + 1
 		}
 	}
-	log.Info("上传文件共：", j, "个，耗时:", time.Now().UnixNano()/1e6-start, "毫秒")
+	logger.Info("上传文件共：", j, "个，耗时:", time.Now().UnixNano()/1e6-start, "毫秒")
 
 }
 
@@ -166,11 +172,11 @@ func syncDownload(localDir string, remoteDir string, conn *ftp.ServerConn) {
 	entries, err := conn.List(remoteDir) //列出无端目录
 
 	if err != nil {
-		log.Error(err)
+		logger.Error(err)
 		return
 	}
 
-	log.Info("开始下载文件,", remoteDir, ",文件数量为：", len(entries))
+	logger.Info("开始下载文件,", remoteDir, ",文件数量为：", len(entries))
 	start := time.Now().UnixNano() / 1e6
 	j := 0
 	for i, entry := range entries {
@@ -186,29 +192,29 @@ func syncDownload(localDir string, remoteDir string, conn *ftp.ServerConn) {
 			localFileName := localDir + fileName
 			r, e := conn.Retr(ftpFileName)
 			if e != nil {
-				log.Error(e)
+				logger.Error(e)
 				continue
 			}
 			b, e1 := ioutil.ReadAll(r)
 			if e1 != nil {
-				log.Error(e1)
+				logger.Error(e1)
 				continue
 			}
 			e2 := ioutil.WriteFile(localFileName, b, 0666)
 			if e2 != nil {
-				log.Error(e2)
+				logger.Error(e2)
 				continue
 			}
 			e3 := r.Close()
 			if e3 != nil {
-				log.Error(e3)
+				logger.Error(e3)
 				continue
 			}
 			if config.DeleteSource {
 				//删除原文件
 				e4 := conn.Delete(ftpFileName)
 				if e4 != nil {
-					log.Error(e4)
+					logger.Error(e4)
 
 					continue
 				}
@@ -217,7 +223,7 @@ func syncDownload(localDir string, remoteDir string, conn *ftp.ServerConn) {
 		}
 		j++
 	}
-	log.Info("上传文件共：", j, "个，耗时:", time.Now().UnixNano()/1e6-start, "毫秒")
+	logger.Info("上传文件共：", j, "个，耗时:", time.Now().UnixNano()/1e6-start, "毫秒")
 
 }
 
@@ -258,7 +264,7 @@ func readConfig(path string) {
 	b, _ := ioutil.ReadFile(path)
 	err := json.Unmarshal(b, &config)
 	if err != nil {
-		log.Error(err)
+		logger.Error(err)
 	}
 }
 
@@ -271,4 +277,37 @@ func filterMatch(name string, matcher []string) bool {
 		}
 	}
 	return false
+}
+
+func NewLogger() *log.Logger {
+	if logger != nil {
+		return logger
+	}
+
+	infoPath := "logs/info.log"
+	writerInfo, _ := rotatelogs.New(
+		infoPath+".%Y%m%d",
+		rotatelogs.WithLinkName(infoPath),
+		rotatelogs.WithMaxAge(time.Duration(86400)*time.Second),
+		rotatelogs.WithRotationTime(time.Duration(604800)*time.Second),
+	)
+
+	errorPath := "logs/error.log"
+	writerError, _ := rotatelogs.New(
+		errorPath+".%Y%m%d",
+		rotatelogs.WithLinkName(errorPath),
+		rotatelogs.WithMaxAge(time.Duration(86400)*time.Second),
+		rotatelogs.WithRotationTime(time.Duration(604800)*time.Second),
+	)
+	logger = log.New()
+
+	logger.Hooks.Add(lfshook.NewHook(
+		lfshook.WriterMap{
+			log.InfoLevel:  writerInfo,
+			log.ErrorLevel: writerError,
+		},
+		&log.JSONFormatter{},
+	))
+
+	return logger
 }
