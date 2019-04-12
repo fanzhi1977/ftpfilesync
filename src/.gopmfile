@@ -1,0 +1,4 @@
+[deps]
+github.com/jlaffaye/ftp = 
+github.com/sirupsen/logrus = 
+
