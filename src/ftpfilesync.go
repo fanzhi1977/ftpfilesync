@@ -15,24 +15,45 @@ import (
 var config Config
 var waitgroup sync.WaitGroup // 记录进程处理结束
 
-
 func main() {
 	flaConfigPath := "config.json"
 	if !checkFileIsExist(flaConfigPath) {
-		fmt.Println("当前目录缺少文件: ", flaConfigPath)
+		fmt.Println(time.Now().Format("2000-00-00 00:00:00.000"), ":", "当前目录缺少文件: ", flaConfigPath)
 		return
 	}
 	readConfig(flaConfigPath)
-	//拔号
-	c, err := ftp.DialWithOptions(config.Host+":"+config.Port, ftp.DialWithTimeout(5*time.Second))
-
-	if err != nil {
-		fmt.Println(err)
+	for {
+		run()
 	}
-	//登录
-	err = c.Login(config.User, config.Passwd)
+
+}
+
+func run() {
+	//拔号
+	conn, err := ftp.DialWithOptions(config.Host+":"+config.Port, ftp.DialWithTimeout(5*time.Second))
 	if err != nil {
-		fmt.Println(err)
+		fmt.Println(time.Now().Format("2000-00-00 00:00:00.000"), ":", err)
+		return
+	}
+	// 退出登录
+	funcQuit := func() {
+		if conn != nil {
+			//连接未断开时退出
+			e := conn.Quit()
+			fmt.Println(time.Now().Format("2000-00-00 00:00:00.000"), ":", "出现错误，ftp连接断开")
+			if e != nil {
+				fmt.Println(time.Now().Format("2000-00-00 00:00:00.000"), ":", e)
+				return
+			}
+		}
+	}
+	defer funcQuit()
+
+	//登录
+	err = conn.Login(config.User, config.Passwd)
+	if err != nil {
+		fmt.Println(time.Now().Format("2000-00-00 00:00:00.000"), ":", err)
+		return
 	}
 
 	//创建目标文件夹
@@ -42,47 +63,59 @@ func main() {
 		IsPut := t.IsPut
 		if IsPut {
 			//上传时在ftp服务器创建文件夹
-			c.MakeDir(remoteDir)
+			e := conn.MakeDir(remoteDir)
+			if e != nil {
+				fmt.Println(time.Now().Format("2000-00-00 00:00:00.000"), ":", e)
+			}
 		} else {
 			//下载时在本地创建文件夹
-			os.Mkdir(localDir,0666)
+			e := os.Mkdir(localDir, 0666)
+			if e != nil {
+				fmt.Println(time.Now().Format("2000-00-00 00:00:00.000"), ":", e)
+			}
 		}
 	}
-	//执行操作
+
+	//执行任务
+	doTask(conn)
+	return
+
+}
+
+//执行操作
+func doTask(conn *ftp.ServerConn) {
 	for true {
 		for _, t := range config.Transfers {
 			remoteDir := t.FtpDir
 			localDir := t.LocalDir
 			IsPut := t.IsPut
-
-
+			//检查服务器是否连接
+			e := conn.NoOp()
+			if e != nil {
+				fmt.Println(time.Now().Format("2000-00-00 00:00:00.000"), ":", e)
+				return
+			}
 			if IsPut {
-				syncUpload(localDir, remoteDir,c)
+				syncUpload(localDir, remoteDir, conn)
 			} else {
-				//下载
-				syncDownload(localDir, remoteDir,c)
+				//下载1
+				syncDownload(localDir, remoteDir, conn)
 			}
 		}
 		time.Sleep(time.Duration(config.Sleep) * time.Millisecond)
 	}
-
-	// 退出登录
-	if err := c.Quit(); err != nil {
-		//t.Fatal(err)
-		fmt.Println(err)
-	}
 }
 
 //同步，上传
-func syncUpload( localDir string, remoteDir string,conn* ftp.ServerConn){
+func syncUpload(localDir string, remoteDir string, conn *ftp.ServerConn) {
 	//上传文件
 	localDirs, _ := ioutil.ReadDir(localDir)
-	fmt.Println(time.Now().Format("2006-01-02 15:04:05.000"),":开始上传文件,",localDir,",文件数量为：", len(localDirs))
+	fmt.Println(time.Now().Format("2000-00-00 00:00:00.000"), ":开始上传文件,", localDir, ",文件数量为：", len(localDirs))
 	for i, localResource := range localDirs {
 		if !localResource.IsDir() {
 			//文件时处理
 			fileName := localResource.Name()
-			if !filterMatch(fileName,config.Filefilters){
+			if !filterMatch(fileName, config.Filefilters) {
 				//后缀不匹配时直接跳过
 				continue
 			}
@@ -90,81 +123,85 @@ func syncUpload( localDir string, remoteDir string,conn* ftp.ServerConn){
 			localFileName := localDir + fileName
 			byteFile, e1 := ioutil.ReadFile(localFileName)
 			if e1 != nil {
-				fmt.Println(e1)
+				fmt.Println(time.Now().Format("2000-00-00 00:00:00.000"), ":", e1)
 				continue
 			}
-			conn.Stor(ftpFileName,bytes.NewBuffer(byteFile))
-			if config.DeleteSource{
+			e2 := conn.Stor(ftpFileName, bytes.NewBuffer(byteFile))
+			if e2 != nil {
+				fmt.Println(time.Now().Format("2000-00-00 00:00:00.000"), ":", e1)
+				continue
+			}
+			if config.DeleteSource {
 				//删除原文件
-				e:=os.Remove(localFileName)
+				e := os.Remove(localFileName)
 				if e != nil {
-					fmt.Println(e)
+					fmt.Println(time.Now().Format("2000-00-00 00:00:00.000"), ":", e)
 					continue
 				}
 
 			}
-			fmt.Println(time.Now().Format("2006-01-02 15:04:05.000"),":上传文件,序号：",i,",文件名：",fileName)
+			fmt.Println(time.Now().Format("2000-00-00 00:00:00.000"), ":上传文件,序号：", i, ",文件名：", fileName)
 		}
 	}
 	waitgroup.Wait() //Wait()这里会发生阻塞，直到队列中所有的任务结束就会解除阻塞
 }
+
 //同步，下载
-func syncDownload( localDir string, remoteDir string,conn* ftp.ServerConn){
+func syncDownload(localDir string, remoteDir string, conn *ftp.ServerConn) {
 	//上传文件
-	entries,err := conn.List(remoteDir) //列出无端目录
+	entries, err := conn.List(remoteDir) //列出无端目录
 
 	if err != nil {
-		fmt.Println(err)
+		fmt.Println(time.Now().Format("2000-00-00 00:00:00.000"), ":", err)
 		return
 	}
-	fmt.Println(time.Now().Format("2006-01-02 15:04:05.000"),":开始下载文件,",remoteDir,",文件数量为：", len(entries))
+	fmt.Println(time.Now().Format("2000-00-00 00:00:00.000"), ":开始下载文件,", remoteDir, ",文件数量为：", len(entries))
 
-	for i,entry :=range entries{
+	for i, entry := range entries {
 		//遍历ftp端目录
-		if entry.Type==ftp.EntryTypeFile{
+		if entry.Type == ftp.EntryTypeFile {
 			//文件时处理，只同步文件
-			fileName:=entry.Name
-			if !filterMatch(fileName,config.Filefilters){
+			fileName := entry.Name
+			if !filterMatch(fileName, config.Filefilters) {
 				//后缀不匹配时直接跳过
 				continue
 			}
-			ftpFileName:=remoteDir+fileName
+			ftpFileName := remoteDir + fileName
 			localFileName := localDir + fileName
-			r,e:=conn.Retr(ftpFileName)
+			r, e := conn.Retr(ftpFileName)
 			if e != nil {
-				fmt.Println(e)
+				fmt.Println(time.Now().Format("2000-00-00 00:00:00.000"), ":", e)
 				continue
 			}
-			bytes,e1:=ioutil.ReadAll(r)
+			b, e1 := ioutil.ReadAll(r)
 			if e1 != nil {
-				fmt.Println(e1)
+				fmt.Println(time.Now().Format("2000-00-00 00:00:00.000"), ":", e1)
 				continue
 			}
-			e2:=ioutil.WriteFile(localFileName,bytes,0666)
+			e2 := ioutil.WriteFile(localFileName, b, 0666)
 			if e2 != nil {
-				fmt.Println(e2)
+				fmt.Println(time.Now().Format("2000-00-00 00:00:00.000"), ":", e2)
 				continue
 			}
-			e3:=r.Close()
+			e3 := r.Close()
 			if e3 != nil {
-				fmt.Println(e3)
+				fmt.Println(time.Now().Format("2000-00-00 00:00:00.000"), ":", e3)
 				continue
 			}
-			if config.DeleteSource{
+			if config.DeleteSource {
 				//删除原文件
-				e4:=conn.Delete(ftpFileName)
+				e4 := conn.Delete(ftpFileName)
 				if e4 != nil {
-					fmt.Println(e4)
+					fmt.Println(time.Now().Format("2000-00-00 00:00:00.000"), ":", e4)
 					continue
 				}
 			}
 
-			fmt.Println(time.Now().Format("2006-01-02 15:04:05.000"),":下载文件,序号：",i,",文件名：",fileName)
+			fmt.Println(time.Now().Format("2000-00-00 00:00:00.000"), ":下载文件,序号：", i, ",文件名：", fileName)
 		}
 	}
 	waitgroup.Wait() //Wait()这里会发生阻塞，直到队列中所有的任务结束就会解除阻塞
 }
-
 
 type Config struct {
 	Host         string     // ip
@@ -199,16 +236,17 @@ func checkFileIsExist(filename string) bool {
 
 // 读取配置
 func readConfig(path string) {
-	bytes, _ := ioutil.ReadFile(path)
-	err := json.Unmarshal(bytes, &config)
+	b, _ := ioutil.ReadFile(path)
+	err := json.Unmarshal(b, &config)
 	if err != nil {
-		fmt.Println("error in translating,", err.Error())
+		fmt.Println(time.Now().Format("2000-00-00 00:00:00.000"), ":", "error in translating,", err.Error())
 	}
 }
+
 //过滤文件名
-func filterMatch(name string,matcher []string) bool{
-	for _,s :=range matcher{
-		if strings.HasSuffix(name,s){
+func filterMatch(name string, matcher []string) bool {
+	for _, s := range matcher {
+		if strings.HasSuffix(name, s) {
 			//匹配时直接返回true
 			return true
 		}
