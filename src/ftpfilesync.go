@@ -44,6 +44,7 @@ func main() {
 func run() {
 	//拔号
 	conn, err := ftp.DialWithOptions(config.Host+":"+config.Port, ftp.DialWithTimeout(5*time.Second))
+
 	if err != nil {
 		logger.Error(err)
 		return
@@ -57,6 +58,7 @@ func run() {
 			if e != nil {
 				logger.Error(e)
 				return
+
 			}
 		}
 	}
