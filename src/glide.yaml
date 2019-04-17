@@ -1,0 +1,22 @@
+package: .
+import:
+- package: github.com/jlaffaye/ftp
+  version: 73b56eeee68d81afb4e5a81e20a67b987aef1c78
+- package: github.com/konsorten/go-windows-terminal-sequences
+  version: f55edac94c9bbba5d6182a4be46d86a2c9b5b50e
+- package: github.com/lestrrat-go/file-rotatelogs
+  version: 4ce522c92b91beadfd4c77f75dcc06ffe97cf9c6
+  subpackages:
+  - internal/option
+- package: github.com/lestrrat-go/strftime
+  version: 8b31f9c59b0feb56c456ce49a7b3d2b2e93a6f18
+- package: github.com/pkg/errors
+  version: 27936f6d90f9c8e1145f11ed52ffffbfdb9e0af7
+- package: github.com/rifflock/lfshook
+  version: b9218ef580f59a2e72dad1aa33d660150445d05a
+- package: github.com/sirupsen/logrus
+  version: 9b3cdde74fbe9443d704467498a7dcb61a79de9b
+- package: golang.org/x/sys
+  version: b44545bcd369ef9ff9bebcfebf5f3370ef9b1932
+  subpackages:
+  - unix
