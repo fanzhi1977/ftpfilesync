@@ -3,18 +3,20 @@ package main
 import (
 	"bytes"
 	"encoding/json"
-	"github.com/jlaffaye/ftp"
-	"github.com/lestrrat-go/file-rotatelogs"
-	"github.com/rifflock/lfshook"
-	log "github.com/sirupsen/logrus"
 	"io/ioutil"
 	"os"
 	"strings"
 	"time"
+	"flag"
+	"github.com/jlaffaye/ftp"
+	rotatelogs "github.com/lestrrat-go/file-rotatelogs"
+	"github.com/rifflock/lfshook"
+	log "github.com/sirupsen/logrus"
 )
 
 var config Config
 var logger *log.Logger
+var f = flag.String("f", "etc/config.json", "-f 配置文件名")
 
 func init() {
 	//log.SetFormatter(&log.JSONFormatter{})
@@ -22,12 +24,12 @@ func init() {
 	//log.SetLevel(log.InfoLevel)
 	NewLogger()
 	logger.SetFormatter(&log.JSONFormatter{})
-	logger.SetLevel(log.InfoLevel)
+	logger.SetLevel(log.ErrorLevel)
 }
 
 func main() {
-
-	flaConfigPath := "etc/config.json"
+	flag.Parse()
+	flaConfigPath := string(*f)
 	if !checkFileIsExist(flaConfigPath) {
 		logger.Error("当前目录缺少文件: ", flaConfigPath)
 		return
@@ -289,7 +291,15 @@ func NewLogger() *log.Logger {
 	infoPath := "logs/info.log"
 	writerInfo, _ := rotatelogs.New(
 		infoPath+".%Y%m%d",
-		rotatelogs.WithLinkName(infoPath),
+		rotatelogs.WithLinkName("info.log"),
+		rotatelogs.WithMaxAge(time.Duration(86400)*time.Second),
+		rotatelogs.WithRotationTime(time.Duration(604800)*time.Second),
+	)
+
+	debugPath := "logs/debug.log"
+	writerDebug, _ := rotatelogs.New(
+		debugPath+".%Y%m%d",
+		rotatelogs.WithLinkName("debug.log"),
 		rotatelogs.WithMaxAge(time.Duration(86400)*time.Second),
 		rotatelogs.WithRotationTime(time.Duration(604800)*time.Second),
 	)
@@ -297,7 +307,7 @@ func NewLogger() *log.Logger {
 	errorPath := "logs/error.log"
 	writerError, _ := rotatelogs.New(
 		errorPath+".%Y%m%d",
-		rotatelogs.WithLinkName(errorPath),
+		rotatelogs.WithLinkName("error.log"),
 		rotatelogs.WithMaxAge(time.Duration(86400)*time.Second),
 		rotatelogs.WithRotationTime(time.Duration(604800)*time.Second),
 	)
@@ -307,6 +317,7 @@ func NewLogger() *log.Logger {
 		lfshook.WriterMap{
 			log.InfoLevel:  writerInfo,
 			log.ErrorLevel: writerError,
+			log.DebugLevel: writerDebug,
 		},
 		&log.JSONFormatter{},
 	))

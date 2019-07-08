@@ -4,8 +4,7 @@
   "Port": "21",
   "User": "test",
   "Passwd": "test",
-  "Transfers":[
-    {
+  "Transfers": [{
       "FtpDir": "send/",
       "LocalDir": "/Users/fanzhi/Documents/temp/send/",
       "IsPut": true
@@ -18,6 +17,6 @@
   ],
   "DeleteSource": true,
   "Sleep": 100,
-  "Filefilters": [".dat",".abc"],
+  "Filefilters": [".dat", ".abc"],
   "log": "log"
 }
